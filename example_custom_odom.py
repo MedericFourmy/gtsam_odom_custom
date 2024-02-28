@@ -62,7 +62,7 @@ if __name__ == '__main__':
         for k in range(5)
     ]
     twist_init = [
-        nu_lst[k] + (np.random.normal(scale=sigma_se3_init) if noisy_meas else np.zeros(6))
+        nu_lst[k] + (np.random.normal(scale=sigma_se3_init) if noisy_init else np.zeros(6))
         for k in range(5)
     ]
 
@@ -100,25 +100,29 @@ if __name__ == '__main__':
         factor_graph.push_back(fint)
 
     # New Values container
-    v = gtsam.Values()
+    v_init = gtsam.Values()
 
     # Add initial estimates to the Values container
     for i in range(5):
-        v.insert(pose_unknown[i], pose_init[i])
-        v.insert(twist_unknown[i], twist_init[i])
+        v_init.insert(pose_unknown[i], pose_init[i])
+        v_init.insert(twist_unknown[i], twist_init[i])
 
     # Initialize optimizer
     params = gtsam.GaussNewtonParams()
-    optimizer = gtsam.GaussNewtonOptimizer(factor_graph, v, params)
+    optimizer = gtsam.GaussNewtonOptimizer(factor_graph, v_init, params)
 
     # Optimize the factor graph
-    result = optimizer.optimize()
-    print(result)
+    print("\n\n INIT")
+    print(v_init)
+    v_final = optimizer.optimize()
+    print("\n\n FINAL")
+    print(v_final)
 
-    # calculate the error from ground truth
-    error_p = np.array([gtsam.Pose3.Logmap(result.atPose3(pose_unknown[k]).inverse() * p_lst[k])
+    # # calculate the error from ground truth
+    # error_p = np.array([gtsam.Pose3.Logmap(result.atPose3(pose_unknown[k]).inverse() * p_lst[k])
+    #                   for k in range(5)])
+    # print(error_p)
+    error_v = np.array([v_final.atVector(twist_unknown[k]) - nu_lst[k]
                       for k in range(5)])
-    print(error_p)
-    error_v = np.array([result.atVector(twist_unknown[k]) - nu_lst[k]
-                      for k in range(5)])
+    print("\n\n error_v")
     print(error_v)
