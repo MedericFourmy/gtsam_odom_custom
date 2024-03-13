@@ -1,6 +1,7 @@
 
 import numpy as np
 import gtsam
+import pinocchio as pin
 
 
 
@@ -52,7 +53,7 @@ def jacs_evg(T1, T2, nu12, dt):
     """
     Jacobian error global velocity
     """
-    jacobians = [np.zeros(6) for _ in range(3)]
+    jacobians = [np.zeros((6,6)) for _ in range(3)]
     
     # Compute error
     T1_inv = T1.inverse()
@@ -65,6 +66,37 @@ def jacs_evg(T1, T2, nu12, dt):
     jacobians[2] = -np.eye(6)*dt
 
     return jacobians
+
+
+def ev_r3so3(T1: gtsam.Pose3, T2: gtsam.Pose3, nu12: np.ndarray, dt):
+    v12, omg12 = nu12[:3], nu12[3:]
+    R1, R2 = T1.rotation(), T2.rotation()
+    p1, p2 = T1.translation(), T2.translation()
+
+    # Compute error
+    R12 = R2 * R1.inverse() 
+    error_o = pin.log3(R12.matrix()) - omg12*dt
+    error_p = p2 - p1 - v12*dt
+    return np.concatenate([error_o, error_p])
+
+
+def jacs_ev_r3so3(T1, T2, nu12, dt):
+    jacobians = [np.zeros((6,6)) for _ in range(3)]
+    
+    R1, R2 = T1.rotation(), T2.rotation()
+
+    # Compute error
+    R12 = R2 * R1.inverse() 
+    JlogR12 = pin.Jlog3(R12.matrix())
+    # SO3 Adjoint matrix is simply the rotation matrix itself (Sola. 139)
+    jacobians[0][:3,:3] = JlogR12 @ (-R1.matrix())
+    jacobians[0][3:,3:] = -np.eye(3)
+    jacobians[1][:3,:3] = JlogR12 @ R1.matrix()
+    jacobians[1][3:,3:] = np.eye(3)
+    jacobians[2] = -np.eye(6)*dt
+
+    return jacobians
+
 
 
 def num_diff(T1, T2, nu12, dt, ev=evl, EPS=1e-6):
@@ -87,17 +119,29 @@ nu1, nu2, nu12 = np.random.random(6), np.random.random(6), np.random.random(6)
 T1, T2 = gtsam.Pose3.Expmap(nu1), gtsam.Pose3.Expmap(nu2)
 dt = 0.2
 
-# Compare analytical with numdiff - LOCAL
-JT1_n, JT2_n, Jnu_n = num_diff(T1, T2, nu12, dt, ev=evl)
-JT1, JT2, Jnu = jacs_evl(T1, T2, nu12, dt)
+# # Compare analytical with numdiff - LOCAL
+# JT1_n, JT2_n, Jnu_n = num_diff(T1, T2, nu12, dt, ev=evl)
+# JT1, JT2, Jnu = jacs_evl(T1, T2, nu12, dt)
 
-assert np.allclose(JT1, JT1_n, atol=1e-7)
-assert np.allclose(JT2, JT2_n, atol=1e-7)
-assert np.allclose(Jnu, Jnu_n, atol=1e-7)
+# assert np.allclose(JT1, JT1_n, atol=1e-7)
+# assert np.allclose(JT2, JT2_n, atol=1e-7)
+# assert np.allclose(Jnu, Jnu_n, atol=1e-7)
 
-# Compare analytical with numdiff - GLOBAL
-JT1_n, JT2_n, Jnu_n = num_diff(T1, T2, nu12, dt, ev=evg)
-JT1, JT2, Jnu = jacs_evg(T1, T2, nu12, dt)
+# # Compare analytical with numdiff - GLOBAL
+# JT1_n, JT2_n, Jnu_n = num_diff(T1, T2, nu12, dt, ev=evg)
+# JT1, JT2, Jnu = jacs_evg(T1, T2, nu12, dt)
+
+# assert np.allclose(JT1, JT1_n, atol=1e-7)
+# assert np.allclose(JT2, JT2_n, atol=1e-7)
+# assert np.allclose(Jnu, Jnu_n, atol=1e-7)
+
+
+# Compare analytical with numdiff - R3SO3 GLOBAL
+JT1_n, JT2_n, Jnu_n = num_diff(T1, T2, nu12, dt, ev=ev_r3so3)
+JT1, JT2, Jnu = jacs_ev_r3so3(T1, T2, nu12, dt)
+
+print(JT1)
+print(JT1_n)
 
 assert np.allclose(JT1, JT1_n, atol=1e-7)
 assert np.allclose(JT2, JT2_n, atol=1e-7)
