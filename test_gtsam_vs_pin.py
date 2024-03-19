@@ -16,6 +16,21 @@ def convert_jac_se3(J):
     J_new[:3,3:] = J[3:,:3] 
     return J_new
 
+def minus_se3(T2, T1):
+    # T2 - T1)
+    return pin.log6(T1.inverse()*T2).vector
+
+def numdiff(f, X, n, m, exp, minus=np.subtract, eps=1e-6):
+    Jac = np.zeros((m,n))
+    for i in range(n):
+        e = np.zeros(n)
+        e[i] = eps
+        Xd = X * exp(e)
+        Jac[:,i] = minus(f(Xd), f(X))/eps
+    return Jac
+
+
+
 Tp1 = pin.SE3.Random()
 Tp2 = pin.SE3.Random()
 
@@ -49,3 +64,13 @@ Ag1 = Tg1.AdjointMap()
 assert np.allclose(Ap1, convert_jac_se3(Ag1))
 # adjoint of the inverse if the inverse of the adjoint
 assert np.allclose(Tg1.inverse().AdjointMap(), np.linalg.inv(Ag1))
+
+
+def to_posi(T: pin.SE3):
+    return T.translation
+
+# d M.t / dM
+n, m = 6, 3
+J_p_n = numdiff(to_posi, Tp1, n, m, pin.exp)
+J_p = np.hstack([Tp1.rotation, np.zeros((3,3))])
+assert np.allclose(J_p_n, J_p[:3,:])
